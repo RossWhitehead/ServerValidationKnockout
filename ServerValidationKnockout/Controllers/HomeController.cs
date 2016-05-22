@@ -13,6 +13,11 @@ namespace ServerValidationKnockout.Controllers
             return View();
         }
 
+        public ActionResult CreateProduct()
+        {
+            return View();
+        }
+
         public ActionResult About()
         {
             ViewBag.Message = "Your application description page.";

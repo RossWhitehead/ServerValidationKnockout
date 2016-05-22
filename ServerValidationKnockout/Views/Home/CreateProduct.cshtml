@@ -1,0 +1,249 @@
+﻿@section styles
+{
+    <style type="text/css">
+        select {
+            height: 30px;
+            display: block;
+        }
+
+        .panel {
+            width: 450px;
+            margin-top: 15px;
+        }
+
+        .panel-heading {
+            padding: 10px 20px;
+        }
+
+        .panel-body {
+            padding: 10px 20px 10px 20px;
+        }
+
+        .error-message {
+            color: red;
+        }
+
+        .error-element {
+            border-color: red;
+        }
+
+        #errors {
+            padding-left: 0;
+            padding-top: 5px;
+        }
+
+            #errors li {
+                list-style-type: none;
+            }
+    </style>
+}
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="panel panel-info" id="add-panel">
+            <div class="panel-heading">
+                <h2 class="panel-title">Create Product</h2>
+            </div>
+            <div class="panel-body">
+                <form role="form" data-bind="validationOptions: validationOptions">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input id="name" type="text" class="form-control" data-bind="value: product.name" placeholder="Product Name" />
+                    </div>
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <input id="description" class="form-control" data-bind="value: product.description" placeholder="Description" />
+                    </div>
+                    <div class="form-group">
+                        <label for="product-category">Product Category</label>
+                        <select id="product-category"
+                                data-bind="options: productCategories, optionsText: 'name', optionsValue: 'productCategoryId',
+                           optionsCaption: '-- Select a Product Category --', value: product.productCategoryId"></select>
+                    </div>
+                    <button type="button" class="btn btn-primary" data-bind="click: save, enable: canSave">
+                        <span class="glyphicon glyphicon-save" aria-hidden="true"></span> Add
+                    </button>
+                    <ul id="errors" class="error-message" data-bind="foreach: generalErrors">
+                        <li><span data-bind="text: $data"></span></li>
+                    </ul>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section scripts
+{
+    <script type="text/javascript">
+        ///////////////////////////////////////////////////////////////////
+        // ko.observable.appendError
+
+        ko.observable.fn.appendError = function (error) {
+            var thisError = this.error();
+            if (thisError) {
+                this.setError(thisError += '. ' + error);
+            }
+            else {
+                this.setError(error)
+            };
+        };
+
+        $(function () {
+            var $addPanel = $('#add-panel');
+            ///////////////////////////////////////////////////////////////////
+            // ProductCategory
+
+            var productCategory = function (productCategoryId, name) {
+                var self = this;
+
+                // Properties
+                self.productCategoryId = productCategoryId;
+                self.name = name;
+            }
+
+            var productCategoryList = function () {
+                var self = this;
+
+                self.productCategories = ko.observableArray([]);
+
+                self.get = function (callBack) {
+                    $.ajax({
+                        url: '/api/ProductCategories',
+                        type: 'get',
+                        contentType: 'application/json; charset=utf-8',
+                        success: function (data) {
+                            $.each(data, function (key, value) {
+                                self.productCategories.push(new productCategory(value.ProductCategoryId, value.Name));
+                            });
+
+                            if (typeof callBack !== "undefined") {
+                                callBack();
+                            };
+                        }
+                    });
+                }
+            }
+
+            ///////////////////////////////////////////////////////////////////
+            // ProductVM
+
+            var productVM = function (productCategories) {
+                var self = this;
+
+                // Properties
+
+                self.product = {
+                    name: ko.observable(null),
+                    description: ko.observable(null),
+                    productCategoryId: ko.observable(0)
+                }
+
+                self.productCategories = ko.observableArray(productCategories);
+
+                // Validation
+
+                self.product.name.extend({
+                    required: true,
+                    maxLength: 100
+                });
+
+                self.product.description.extend({
+                    required: true,
+                    maxLength: 1000
+                });
+
+                self.product.productCategoryId.extend({
+                    required: true
+                });
+
+                self.errors = ko.validation.group(self.product);
+
+                self.generalErrors = ko.observableArray([]);
+
+                self.validationOptions = {
+                    decorateInputElement: true,
+                    errorElementClass: 'error-element',
+                    errorMessageClass: 'error-message'
+                };
+
+                // State
+
+                self.isSaving = ko.observable(false);
+
+                self.isValid = ko.computed(function () {
+                    return self.errors().length == 0;
+                });
+
+                self.canSave = ko.computed(function () {
+                    return self.isValid() && !self.isSaving();
+                });
+
+                // Methods
+
+                self.save = function () {
+                    if (self.errors().length == 0) {
+                        self.isSaving(true);
+
+                        var dataObject = ko.toJSON(self.product);
+
+                        $.ajax({
+                            url: '/api/products',
+                            type: 'post',
+                            data: dataObject,
+                            dataType: 'json',
+                            contentType: 'application/json; charset=utf-8',
+                            success: function (data) {
+                                self.isSaving(false);
+                            },
+                            statusCode: {
+                                400: function (data) {
+                                    if (typeof data.responseJSON.ModelState !== 'undefined') {
+                                        $.each(data.responseJSON.ModelState, function (key, errors) {
+                                            $.each(errors, function (index, error) {
+                                                switch (key) {
+                                                    case 'product.Name':
+                                                        self.product.name.appendError(error);
+                                                        break;
+                                                    case 'product.Description':
+                                                        self.product.description.appendError(error);
+                                                        break;
+                                                    case 'product.ProductCategory':
+                                                        self.product.productCategoryId.appendError(error);
+                                                        break;
+                                                    default:
+                                                        self.generalErrors.push(error);
+                                                        break;
+                                                };
+                                            });
+                                        });
+                                    }
+                                    else {
+                                        self.generalErrors.push(data.responseJSON.Message);
+                                    };
+                                },
+                                500: function (data) {
+                                    self.generalErrors.push(data.statusText + '. Please try again.');
+                                }
+                            }
+                        });
+                    }
+                    else {
+                        self.errors.showAllMessages(true);
+                    }
+                };
+            }
+
+            /////////////////////////////////////////////////////////////////
+            // Let's kick it all off
+
+            var productCategoryList = new productCategoryList();
+
+            productCategoryList.get(function () {
+                var vm = new productVM(productCategoryList.productCategories());
+                ko.applyBindings(vm, $addPanel[0]);
+                vm.errors.showAllMessages(false);
+            });
+        });
+    </script>
+}
+
